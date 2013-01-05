@@ -2,7 +2,6 @@ package com.tuple23.restkitserver
 
 import spray.routing.SimpleRoutingApp
 import spray.routing._
-
 import spray.http._
 import StatusCodes._
 import MediaTypes._
@@ -26,7 +25,13 @@ object Main extends App with SimpleRoutingApp {
       User("greguser",  "greg", 30),
       User("maryuser", "mary", 40))
 
-  startServer(interface = "localhost", port = 8080){
+  // list of thumbnail images
+  var images = 
+    List[Image]()
+
+  case class Image(data: Array[Byte], owner: String)
+
+  startServer(interface = "0.0.0.0", port = 80){
     pathPrefix("user"){
       get {
         path(PathElement){ username =>
@@ -44,7 +49,7 @@ object Main extends App with SimpleRoutingApp {
         }
       } ~
       post {
-        entity(as[User]){ user =>
+        entity(as[User]){ user => 
           println("updating user: " + user)
           db = db.filterNot(user.username == _.username)
           db = user :: db
@@ -64,9 +69,34 @@ object Main extends App with SimpleRoutingApp {
         }
       }
     } ~
+    path("image" / PathElement){ username =>
+      get {
+        val image = images.find(username == _.owner)
+        image match {
+          case Some(image) =>
+            println("found image for: " + image.owner)
+            complete(HttpBody(`application/octet-stream`, image.data))
+          case None =>
+            println("no image found for: " + username)
+            complete(NotFound)
+        }
+      } ~
+      post {
+        entity(as[MultipartFormData]){ formData =>
+          println("recieved form")
+          println(username + " put an image")
+          images = Image(owner = username, data = formData.fields("image").entity.buffer) :: images.filterNot(username == _.owner)
+          complete(OK)
+        } ~ 
+        complete {
+          println("post sent, but no form with image")
+          BadRequest
+        }
+      }
+    } ~
     path("users"){
       complete(db)
     } ~
-    complete("unknown route")
+    complete(BadRequest)
   }
 }
